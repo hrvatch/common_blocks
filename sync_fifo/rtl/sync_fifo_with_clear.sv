@@ -42,9 +42,6 @@ module sync_fifo_with_clear #(
   // Read and write pointers with extra bit
   logic [PTR_WIDTH-1:0] wr_ptr, rd_ptr;
 
-  // FIFO sample counter
-  logic [PTR_WIDTH-1:0] sample_count;
-
   // Output register
   logic [DATA_WIDTH-1:0] output_register;
   logic [DATA_WIDTH-1:0] rd_data;
@@ -54,9 +51,6 @@ module sync_fifo_with_clear #(
                  (wr_ptr[ADDR_WIDTH-1:0] == rd_ptr[ADDR_WIDTH-1:0]);
   assign o_empty = (wr_ptr == rd_ptr);
 
-  // FIFO sample counter
-  assign sample_count = wr_ptr - rd_ptr;
-  
   // Write logic
   always_ff @(posedge clk) begin
     if (!rst_n) begin
