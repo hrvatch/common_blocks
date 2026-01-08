@@ -1,7 +1,7 @@
 module sync_fifo_fwft_with_clear_formal_tb #(
   parameter int unsigned DATA_WIDTH = 8,
   parameter int unsigned DEPTH = 8,
-  parameter int unsigned EXTRA_OUTPUT_REGISTER = 1'b1
+  parameter int unsigned EXTRA_OUTPUT_REGISTER = 1'b0
 ) (
   input  logic                  clk,
   input  logic                  rst_n,
