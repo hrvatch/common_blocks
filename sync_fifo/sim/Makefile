@@ -6,6 +6,9 @@ jg_sync_fifo_with_threshold:
 jg_sync_fifo_with_clear:
 	jg $(SYNC_FIFO_PATH)/formal/tcl/sync_fifo_with_clear.tcl
 
+jg_sync_fifo_fwft_with_clear:
+	jg $(SYNC_FIFO_PATH)/formal/tcl/sync_fifo_fwft_with_clear.tcl
+
 clean:
 	rm -rf jgproject
 
@@ -13,4 +16,5 @@ help:
 	@echo "Available targets:"
 	@echo "  jg_sync_fifo_with_threshold         - Start Jasper FPV for Sync FIFO with threshold"
 	@echo "  jg_sync_fifo_with_clear             - Start Jasper FPV for Sync FIFO with clear"
+	@echo "  jg_sync_fifo_fwft_with_clear        - Start Jasper FPV for FWFT Sync FIFO with clear"
 	@echo "  clean															 - Remove simulation artefacts"
