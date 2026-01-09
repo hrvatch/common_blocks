@@ -1,4 +1,4 @@
-// Synchronous FIFO with FIFO clear. 
+// Synchronous FIFO with FIFO clear - Optimized for timing
 // FIFO depth MUST be a power of two.
 //
 // When 'i_rd_en' is asserted, data will appear on the output after 1 clock cycle, unless
@@ -12,16 +12,15 @@
 // - The 'o_full' signal is asserted when FIFO is full.
 // - Asserting 'i_clr' will empty the FIFO. Note - when 'i_clr' is asserted, if 'i_rd_en' was
 //   asserted in the previous clock cycle, a read data will still appear on the output.
-
 module sync_fifo_with_clear #(
-  parameter int unsigned DATA_WIDTH = 8,       // RAM data width
-  parameter int unsigned DEPTH = 16,           // Must be power of 2
+  parameter int unsigned DATA_WIDTH = 32,       // RAM data width
+  parameter int unsigned DEPTH = 1024,           // Must be power of 2
   parameter bit EXTRA_OUTPUT_REGISTER = 1'b0   // Adding output register increases latency to 2cc
 ) (
   input  logic                  clk,
   input  logic                  rst_n,
   input  logic                  i_clr,
-
+  
   // Write interface
   input  logic                  i_wr_en,
   input  logic [DATA_WIDTH-1:0] i_wr_data,
@@ -32,68 +31,92 @@ module sync_fifo_with_clear #(
   output logic [DATA_WIDTH-1:0] o_rd_data,
   output logic                  o_empty
 );
-
+  
   localparam int ADDR_WIDTH = $clog2(DEPTH);
-  localparam int PTR_WIDTH = ADDR_WIDTH + 1;  // Extra bit for full/empty
-    
+  localparam int COUNT_WIDTH = $clog2(DEPTH+1);  // Can hold 0 to DEPTH
+  
   // Memory array
   logic [DATA_WIDTH-1:0] mem [DEPTH];
   
-  // Read and write pointers with extra bit
-  logic [PTR_WIDTH-1:0] wr_ptr, rd_ptr;
-
-  // Output register
+  // Simple address counters (no extra MSB for full/empty detection)
+  logic [ADDR_WIDTH-1:0] wr_addr, rd_addr;
+  
+  // Occupancy counter for full/empty detection
+  logic [COUNT_WIDTH-1:0] count;
+  
+  // Output registers
   logic [DATA_WIDTH-1:0] output_register;
   logic [DATA_WIDTH-1:0] rd_data;
   
-  // Full and o_empty conditions
-  assign o_full  = (wr_ptr[PTR_WIDTH-1] != rd_ptr[PTR_WIDTH-1]) && 
-                 (wr_ptr[ADDR_WIDTH-1:0] == rd_ptr[ADDR_WIDTH-1:0]);
-  assign o_empty = (wr_ptr == rd_ptr);
-
-  // Write logic
+  // Full/empty based purely on counter (no pointer comparison!)
+  logic internal_full, internal_empty;
+  logic will_write, will_read;
+  
+  assign internal_full  = (count == DEPTH[COUNT_WIDTH-1:0]);
+  assign internal_empty = (count == '0);
+  
+  assign o_full  = internal_full;
+  assign o_empty = internal_empty;
+  
+  // Determine actual operations this cycle
+  assign will_write = i_wr_en && !internal_full;
+  assign will_read  = i_rd_en && !internal_empty;
+  
+  // Occupancy counter - INDEPENDENT of address logic
   always_ff @(posedge clk) begin
     if (!rst_n) begin
-      wr_ptr <= '0;
+      count <= '0;
+    end else if (i_clr) begin
+      count <= '0;
     end else begin
-      if (i_clr) begin
-        wr_ptr <= '0;
-      end else if (i_wr_en && !o_full) begin
-        wr_ptr <= wr_ptr + 1'b1;
-      end
+      case ({will_write, will_read})
+        2'b10: count <= count + 1'b1;  // Write only
+        2'b01: count <= count - 1'b1;  // Read only
+        // 2'b11: count unchanged (simultaneous)
+        // 2'b00: count unchanged (idle)
+        default: count <= count;
+      endcase
     end
   end
   
-  // Read logic
+  // Write address counter
   always_ff @(posedge clk) begin
     if (!rst_n) begin
-      rd_ptr <= '0;
-    end else begin
-      if (i_clr) begin
-        rd_ptr <= '0;
-      end else if (i_rd_en && !o_empty) begin
-        rd_ptr <= rd_ptr + 1'b1;
-      end
+      wr_addr <= '0;
+    end else if (i_clr) begin
+      wr_addr <= '0;
+    end else if (will_write) begin
+      wr_addr <= wr_addr + 1'b1;
     end
   end
-
-  // FIFO write
+  
+  // FIFO write - now uses counter-based full flag
   always_ff @(posedge clk) begin
-    if (i_wr_en && !o_full && !i_clr) begin
-      mem[wr_ptr[ADDR_WIDTH-1:0]] <= i_wr_data;
+    if (will_write && !i_clr) begin
+      mem[wr_addr] <= i_wr_data;
     end
   end
- 
-  // FIFO read
+  
+  // Read address counter
+  always_ff @(posedge clk) begin
+    if (!rst_n) begin
+      rd_addr <= '0;
+    end else if (i_clr) begin
+      rd_addr <= '0;
+    end else if (will_read) begin
+      rd_addr <= rd_addr + 1'b1;
+    end
+  end
+  
+  // FIFO read - power-efficient with read enable
   // One-cycle latency: data appears the cycle after i_rd_en assertion
   always_ff @(posedge clk) begin
-    if (i_rd_en && !o_empty) begin
-      rd_data <= mem[rd_ptr[ADDR_WIDTH-1:0]];
+    if (will_read) begin
+      rd_data <= mem[rd_addr];
     end
   end
-
-  // If output register is enabled, this increases latency by additional 1 clock cycle, but
-  // it significantly improves timing
+  
+  // Optional extra output register for timing improvement
   generate
     if (EXTRA_OUTPUT_REGISTER) begin : ram_output_register
       always_ff @(posedge clk) begin
@@ -104,5 +127,5 @@ module sync_fifo_with_clear #(
       assign o_rd_data = rd_data;
     end
   endgenerate
-
+  
 endmodule : sync_fifo_with_clear
